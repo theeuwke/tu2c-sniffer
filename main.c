@@ -82,7 +82,7 @@ int read_packet(int sockfd, unsigned char *buff, int len) {
 #define HEADER 2
 #define SOURCE 4
 #define DESTINATION 7
-#define DATA 9
+#define DATA 10
 
 enum opcodes {
 	OPCODE_PING = 0x10,
@@ -123,10 +123,15 @@ void decode_tcc2(unsigned char *buff) {
 
 	memcpy(&source, &buff[SOURCE], 3);
 	memcpy(&desination, &buff[DESTINATION], 3);
-	source &= 0xFFFFF;
-	desination &= 0xFFFFF;
+	source &= 0xFFFFFF;
+	desination &= 0xFFFFFF;
 	
-	printf("opcode: %02x\n type: %s\n source: %04x\n destination: %04x\n", buff[HEADER], print_header(buff[HEADER]), source, desination);
+	printf("opcode: %02x\n type: %s\n source: %06x\n destination: %06x\n", buff[HEADER], print_header(buff[HEADER]), source, desination);
+
+	//for(int i = 0; i < buff[SIZE] + HEADER_SIZE; i++) {
+	//	printf("%02x ", buff[i]);
+	//}
+	//printf("\n");
 
 	for(int i = DATA; i < buff[SIZE] + HEADER_SIZE; i++) {
 		printf("%02x ", buff[i]);
@@ -152,7 +157,7 @@ void read_tcc2(unsigned char *buff) {
 		printf("crc correct, decoding packet\n");
 		decode_tcc2(buff);
 	} else {
-		printf("crc incorect, skipping packet, %02x, %02x\n", buff[total_len-2], buff[total_len-1]);
+		printf("crc incorect, skipping packet\n, %02x, %02x\n", buff[total_len-2], buff[total_len-1]);
 	}
 }
 
@@ -178,7 +183,7 @@ void func(int sockfd, int type, int shift, int align, int var, bool collum)
 			if((sync_bytes == 2)) {
 				/* read remainder to be in sync */
 				size = buff[index+3];
-				printf(", packet size: %d, remainder: %d\n", size, ret - index);
+				raw_print(", packet size: %d, remainder: %d\n", size, ret - index);
 				//raw_print("packet size: %d, crc16c: %04x: ", size, crc16_mcrf4xx(0xffff, &buff[index], size+HEADER_SIZE));
 				read_tcc2(&buff[index]);
 				sync_bytes = 0;
