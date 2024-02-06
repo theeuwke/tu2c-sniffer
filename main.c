@@ -29,6 +29,8 @@ uint8_t test_packet[][32] = {
 	{ 0xa0, 0x00, 0x18, 0x09, 0x00, 0x08, 0x00, 0x00, 0x40, 0x00, 0xa1, 0x00, 0x41, 0x21, 0xef },
 	{ 0xa0, 0x00, 0x17, 0x0f, 0x00, 0x00, 0x40, 0x08, 0x00, 0x00, 0x80, 0x00, 0xef, 0x00, 0x2c, 0x08, 0x00, 0x09, 0x00, 0xaf, 0x88 },
 	{ 0xa0, 0x00, 0x10, 0x07, 0x00, 0x08, 0x00, 0x00, 0xfe, 0x00, 0x8a, 0x75, 0x05 },
+	{ 0xa0, 0x00, 0x55, 0x09, 0x00, 0x00, 0x40, 0x08, 0x00, 0x03, 0xc6, 0x00, 0x00, 0xae, 0x4c}, 
+	{ 0xa0, 0x00, 0x58, 0x19, 0x00, 0x08, 0x00, 0x00, 0xfe, 0x03, 0xc6, 0xc3, 0x84, 0x12, 0x8e, 0x66, 0x66, 0x8e, 0x51, 0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe9, 0x89, 0x4d, 0x00, 0xaf, 0x4c},
 };
 
 union data_packet {
@@ -109,11 +111,25 @@ char codes [OPCODE_MAX][22] = {
 	[OPCODE_EXTENDED_STATUS] = "EXTENDED_STATS",
 };
 
+const uint8_t TEMPERATURE_DATA_MASK = 0b11111110;
+const float TEMPERATURE_CONVERSION_RATIO = 2.0;
+const float TEMPERATURE_CONVERSION_OFFSET = 35.0;
+
 char * print_header(uint8_t code) {
 	if((code >= OPCODE_PING) && (code < OPCODE_MAX)) {
 		return &codes[code][0];
 	} else {
 		return NULL;
+	}
+}
+
+void data_tcc2(uint8_t opcode, unsigned char *buff) {
+	switch(opcode) {
+		case OPCODE_TEMPERATURE:
+			printf("temperature: %f\n", ((float)buff[0])/10.0f);
+		break;
+		default:
+		break;
 	}
 }
 
@@ -137,6 +153,8 @@ void decode_tcc2(unsigned char *buff) {
 		printf("%02x ", buff[i]);
 	}
 	printf("\n");
+
+	data_tcc2(buff[HEADER], &buff[DATA]);
 }
 
 void read_tcc2(unsigned char *buff) {
@@ -152,12 +170,12 @@ void read_tcc2(unsigned char *buff) {
 	raw_print("\n");
 
 	crc = crc16_mcrf4xx(0xffff, buff, total_len - CRC_SIZE);
-	printf("crc: %04x, u8h: %02x, u8l: %02x\n", crc, crc >> 8, crc & 0xff);
+	//printf("crc: %04x, u8h: %02x, u8l: %02x\n", crc, crc >> 8, crc & 0xff);
 	if(((crc >> 8) == buff[total_len-2]) || ((crc & 0xff) == buff[total_len-1])) {
-		printf("crc correct, decoding packet\n");
+		//printf("crc correct, decoding packet\n");
 		decode_tcc2(buff);
 	} else {
-		printf("crc incorect, skipping packet\n, %02x, %02x\n", buff[total_len-2], buff[total_len-1]);
+		printf("crc incorect, skipping packet: crc: %02x != %02x, %02x\n", crc, buff[total_len-2], buff[total_len-1]);
 	}
 }
 
