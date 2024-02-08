@@ -23,6 +23,14 @@
 #define raw_print(fmt, ...) do {} while (0)
 #endif
 
+#define DEBUG
+#ifdef DEBUG
+#define dbg_print(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#else
+#define dbg_print(fmt, ...) do {} while (0)
+#endif
+
+
 #define TYPE 1
 
 uint8_t test_packet[][32] = {
@@ -85,6 +93,7 @@ int read_packet(int sockfd, unsigned char *buff, int len) {
 #define SOURCE 4
 #define DESTINATION 7
 #define DATA 10
+#define OPCODE2 10
 
 enum opcodes {
 	OPCODE_PING = 0x10,
@@ -99,62 +108,159 @@ enum opcodes {
 	OPCODE_MAX
 };
 
-char codes [OPCODE_MAX][22] = {
+enum opcodes2_master {
+	OPCODE2_PONG = 0x0C,
+	OPCODE2_STATUS = 0x81,
+	OPCODE2_ALIVE  = 0x8A,
+	OPCODE2_MODE_MASTER = 0x86,
+	OPCODE2_ACK  = 0xA1,
+	OPCODE2_MASTER_MAX
+};
+
+enum opcodes2_remote {
+	OPCODE2_POWER = 0x41,
+	OPCODE2_MODE_REMOTE = 0x42,
+	OPCODE2_TEMP_FAN = 0x4C,
+	OPCODE2_SAVE = 0x54,
+	OPCODE2_SENSOR_QUERY  = 0x80,
+	OPCODE2_SENSOR_ROOM_TEMP = 0x81,
+	OPCODE2_PING = 0x0C81,
+	OPCODE2_TIMER = 0x0C82,
+	OPCODE2_REMOTE_MAX
+};
+
+char codes[OPCODE_MAX][22] = {
 	[OPCODE_PING] = "PING",
 	[OPCODE_PARAMETER] = "PARAMETER",
 	[OPCODE_ERROR_HISTORY] = "ERROR_HISTORY",
 	[OPCODE_ACK] = "ACK",
-	[OPCODE_SENSOR_QUERY] = "QUERY",
-	[OPCODE_SENSOR_VALUE] = "VALUE",
+	[OPCODE_SENSOR_QUERY] = "SENSOR_QUERY",
+	[OPCODE_SENSOR_VALUE] = "SENSOR_VALUE",
 	[OPCODE_STATUS] = "STATUS",
 	[OPCODE_TEMPERATURE] = "TEMPERATURE",
 	[OPCODE_EXTENDED_STATUS] = "EXTENDED_STATS",
+};
+
+char codes2_master[OPCODE2_MASTER_MAX][22] = {
+	[OPCODE2_STATUS] = "STATUS",
+	[OPCODE2_ALIVE] = "ALIVE",
+	[OPCODE2_ACK] = "ACK",
+	[OPCODE2_MODE_MASTER] = "MODE",
+	[OPCODE2_PONG] = "PONG",
+};
+
+char codes2_remote[OPCODE2_REMOTE_MAX][22] = {
+	[OPCODE2_POWER] = "POWER",
+	[OPCODE2_MODE_REMOTE] = "MODE_REMOTE",
+	[OPCODE2_TEMP_FAN] = "TEMP_FAN",
+	[OPCODE2_SAVE] = "SAVE",
+	[OPCODE2_PING] = "PING",
+	[OPCODE2_TIMER] = "TIMER",
+	[OPCODE2_PONG] = "PONG",
 };
 
 const uint8_t TEMPERATURE_DATA_MASK = 0b11111110;
 const float TEMPERATURE_CONVERSION_RATIO = 2.0;
 const float TEMPERATURE_CONVERSION_OFFSET = 35.0;
 
-char * print_header(uint8_t code) {
-	if((code >= OPCODE_PING) && (code < OPCODE_MAX)) {
-		return &codes[code][0];
+char * print_opcode(uint8_t opcode) {
+	if((opcode >= OPCODE_PING) && (opcode < OPCODE_MAX)) {
+		return &codes[opcode][0];
 	} else {
 		return NULL;
 	}
 }
 
-void data_tcc2(uint8_t opcode, unsigned char *buff) {
+char * print_opcode2(uint8_t opcode) {
+	if((opcode >= OPCODE2_STATUS) && (opcode < OPCODE2_MASTER_MAX)) {
+		return &codes2_master[opcode][0];
+	} else {
+		return NULL;
+	}
+}
+
+char * print_opcode2_remote(uint8_t opcode) {
+	if((opcode >= OPCODE2_POWER) && (opcode < OPCODE2_REMOTE_MAX)) {
+		return &codes2_remote[opcode][0];
+	} else {
+		return NULL;
+	}
+}
+
+void data_tcc2(uint8_t opcode, unsigned char *buff, int len) {
+
+	uint16_t *ptr16 = (uint16_t *) buff;
+	uint32_t *ptr32 = (uint32_t *) buff;
+
 	switch(opcode) {
 		case OPCODE_TEMPERATURE:
-			printf("temperature: %f\n", ((float)buff[0])/10.0f);
+			printf("temperature: %f\n\n", ((float)buff[0])/10.0f);
+		break;
+		case OPCODE_SENSOR_VALUE:
+			//ptr16 = (uint16_t *) &buff[5];
+			//printf("sensor: %d, %02x\n\n", *ptr16, *ptr16);
+			//printf("sensor lsb: %d\n", (buff[5] & 0xFF) | ((buff[6] << 8) & 0xFF00));
+			printf("sensor: %d, %04x\n", (buff[6] & 0xFF) | ((buff[5] << 8) & 0xFF00), (buff[6] & 0xFF) | ((buff[5] << 8) & 0xFF00));
+			//printf("value: %f\n", ((float)buff[0])/10.0f);
+#if 0
+			for(int i = 0; i < len; i++) {
+				printf("u8: %d\n", buff[i]);
+				if(i % 2 == 0) {
+					printf("u16: %d\n", ptr16[i/2]);
+				}
+				if(i % 4 == 0) {
+					printf("u32: %d\n", ptr32[i/4]);
+				}
+			}
+#endif
 		break;
 		default:
 		break;
 	}
 }
 
-void decode_tcc2(unsigned char *buff) {
-	uint32_t source;
-	uint32_t desination;
+void decode_tcc2(unsigned char *buff, int len) {
+	uint16_t source;
+	uint16_t desination;
 
-	memcpy(&source, &buff[SOURCE], 3);
-	memcpy(&desination, &buff[DESTINATION], 3);
-	source &= 0xFFFFFF;
-	desination &= 0xFFFFFF;
+	//memcpy(&source, &buff[SOURCE+2], 2);
+	memcpy(&desination, &buff[DESTINATION+1], 2);
+
+	source = (buff[SOURCE+2] & 0xFF ) | ((buff[SOURCE] << 8) & 0xFF00);
+	desination &= 0xFFFF;
 	
-	printf("opcode: %02x\n type: %s\n source: %06x\n destination: %06x\n", buff[HEADER], print_header(buff[HEADER]), source, desination);
-
-	//for(int i = 0; i < buff[SIZE] + HEADER_SIZE; i++) {
-	//	printf("%02x ", buff[i]);
-	//}
-	//printf("\n");
-
+	if(source == 0x0000) {
+		printf("opcode:       %02x\n"
+			" type:        %s\n"
+			" source:      %04x, r/w: %02x\n"
+			" destination: %04x, r/w: %02x\n"
+			" opcode2:     %02x\n"
+			" desc:        %s\n",
+			buff[HEADER] , print_opcode(buff[HEADER]), source, buff[SOURCE+1], desination, buff[DESTINATION], buff[OPCODE2], print_opcode2(buff[OPCODE2]));
+	}
+	if(source == 0x0040) {
+		printf("opcode:       %02x\n"
+			" type:        %s\n"
+			" source:      %04x, r/w: %02x\n"
+			" destination: %04x, r/w: %02x\n"
+			" opcode2:     %02x\n"
+			" desc:        %s\n",
+			buff[HEADER] , print_opcode(buff[HEADER]), source, buff[SOURCE+1], desination, buff[DESTINATION], buff[OPCODE2], print_opcode2_remote(buff[OPCODE2]));
+	}
+	printf(" ");
 	for(int i = DATA; i < buff[SIZE] + HEADER_SIZE; i++) {
 		printf("%02x ", buff[i]);
 	}
 	printf("\n");
 
-	data_tcc2(buff[HEADER], &buff[DATA]);
+	dbg_print("raw: ");
+	for(int i = 0; i < buff[SIZE] + HEADER_SIZE; i++) {
+		dbg_print("%02x ", buff[i]);
+	}
+	dbg_print("\n");
+
+	data_tcc2(buff[HEADER], &buff[DATA], len);
+	printf("\n");
 }
 
 void read_tcc2(unsigned char *buff) {
@@ -173,7 +279,7 @@ void read_tcc2(unsigned char *buff) {
 	//printf("crc: %04x, u8h: %02x, u8l: %02x\n", crc, crc >> 8, crc & 0xff);
 	if(((crc >> 8) == buff[total_len-2]) || ((crc & 0xff) == buff[total_len-1])) {
 		//printf("crc correct, decoding packet\n");
-		decode_tcc2(buff);
+		decode_tcc2(buff, len);
 	} else {
 		printf("crc incorect, skipping packet: crc: %02x != %02x, %02x\n", crc, buff[total_len-2], buff[total_len-1]);
 	}
