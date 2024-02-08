@@ -187,20 +187,89 @@ char * print_opcode2_remote(uint8_t opcode) {
 	}
 }
 
+enum sensor_addr {          /* ref. value */
+	SENSOR_ADDR_TC = 0x04,  /* no value */
+	SENSOR_ADDR_TWI = 0x06, /* 25 */
+	SENSOR_ADDR_TWO = 0x07, /* 27, RT? */
+	SENSOR_ADDR_THO = 0x08, /* 28 */
+	SENSOR_ADDR_TTW = 0x09,  /* 44 */
+	SENSOR_ADDR_AAA = 0x0b, /* ??? 44, but could 0x09 */
+	SENSOR_ADDR_LPS = 0x0e, /* 143 */
+	SENSOR_ADDR_WF = 0xc0,  /* 230 */
+	SENSOR_ADDR_TE = 0x60,  /* 4 */
+	SENSOR_ADDR_TO = 0x61,  /* 9 */
+	SENSOR_ADDR_TD = 0x62, /* 46, 47 */
+	SENSOR_ADDR_TS = 0x63,  /* 7, 8 */
+	SENSOR_ADDR_CT = 0x6a,  /* 39 */
+	SENSOR_ADDR_CMP = 0x70, /* 34, 32 */
+	SENSOR_ADDR_FAN1 = 0x72,/* 480 */
+	SENSOR_ADDR_BBB = 0x73, /* ??? 44 */
+	SENSOR_ADDR_PMV = 0x74, /* 14 */
+	SENSOR_ADDR_HPS = 0x7a, /* 190, 192 */
+};
+
+struct sensor_data {
+		enum sensor_addr addr;
+		float norm;
+		char desc[5];
+};
+
+const struct sensor_data sensor_data_table[] = {
+	{ SENSOR_ADDR_TC, 1.0, "TC" },
+	{ SENSOR_ADDR_TWI, 1.0, "TWI" },
+	{ SENSOR_ADDR_TWO, 1.0, "TWO" },
+	{ SENSOR_ADDR_THO, 1.0, "THO" },
+	{ SENSOR_ADDR_TD, 1.0, "TD" },
+	{ SENSOR_ADDR_TTW, 1.0, "TTW" },
+	{ SENSOR_ADDR_WF, 0.1, "WF" },
+	{ SENSOR_ADDR_LPS, 0.01, "LPS" },
+	{ SENSOR_ADDR_TE, 1.0, "TE" },
+	{ SENSOR_ADDR_TO, 1.0, "TO" },
+	{ SENSOR_ADDR_TS, 1.0, "TS" },
+	{ SENSOR_ADDR_CT, 0.1, "CT" },
+	{ SENSOR_ADDR_CMP, 1.0, "CMP" },
+	{ SENSOR_ADDR_FAN1, 1.0, "FAN1" },
+	{ SENSOR_ADDR_PMV, 10.0, "PMV" },
+	{ SENSOR_ADDR_HPS, 0.01, "HPS" }
+};
+#define SENSOR_TABLE_SIZE (sizeof(sensor_data_table)/sizeof(sensor_data_table[0]))
+
+float sensor_tcc2(uint8_t addr, uint16_t value) {
+	float tmp;
+	for(int i = 0; i < SENSOR_TABLE_SIZE; i++) {
+		if(sensor_data_table[i].addr == addr) {
+			tmp = (float) value * sensor_data_table[i].norm;
+			printf("\t%s:\t%.2f", sensor_data_table[i].desc, tmp);
+			return tmp;
+		}
+	}
+	printf("unknown");
+}
+
 void data_tcc2(uint8_t opcode, unsigned char *buff, int len) {
 
 	uint16_t *ptr16 = (uint16_t *) buff;
 	uint32_t *ptr32 = (uint32_t *) buff;
 
+	static uint16_t sensor_req = 0;
+	uint16_t sensor_value; 
+
 	switch(opcode) {
 		case OPCODE_TEMPERATURE:
 			printf("temperature: %f\n\n", ((float)buff[0])/10.0f);
+		break;
+		case OPCODE_SENSOR_QUERY:
+			printf("sensor_query[%02x]\n", buff[7]);
+			sensor_req = buff[7];
 		break;
 		case OPCODE_SENSOR_VALUE:
 			//ptr16 = (uint16_t *) &buff[5];
 			//printf("sensor: %d, %02x\n\n", *ptr16, *ptr16);
 			//printf("sensor lsb: %d\n", (buff[5] & 0xFF) | ((buff[6] << 8) & 0xFF00));
-			printf("sensor: %d, %04x\n", (buff[6] & 0xFF) | ((buff[5] << 8) & 0xFF00), (buff[6] & 0xFF) | ((buff[5] << 8) & 0xFF00));
+			sensor_value = (uint16_t) ((buff[6] & 0xFF) | ((buff[5] << 8) & 0xFF00));
+			printf("sensor_value[%02x]: %d, ", sensor_req,  sensor_value);
+			(void) sensor_tcc2(sensor_req, sensor_value);
+			printf("\n");
 			//printf("value: %f\n", ((float)buff[0])/10.0f);
 #if 0
 			for(int i = 0; i < len; i++) {
